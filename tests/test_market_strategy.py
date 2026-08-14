@@ -5,6 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from src.core.market_profile import get_profile
 from src.core.market_strategy import get_market_strategy_blueprint
 from src.market_analyzer import MarketAnalyzer, MarketOverview
 
@@ -197,6 +198,130 @@ class TestMarketAnalyzerStrategyPrompt(unittest.TestCase):
             purpose="market_review:hk"
         )
         self.assertEqual(overview.up_count, 3)
+
+
+class TestTaiwanProfileAndBlueprint(unittest.TestCase):
+    """台股复盘元数据：TW_PROFILE 与 TW_BLUEPRINT。"""
+
+    def test_tw_profile_uses_twii_index_and_no_market_stats(self):
+        profile = get_profile("tw")
+
+        self.assertEqual(profile.region, "tw")
+        self.assertEqual(profile.mood_index_code, "TWII")
+        self.assertFalse(profile.has_market_stats)
+        self.assertFalse(profile.has_sector_rankings)
+
+    def test_tw_blueprint_region_and_title(self):
+        blueprint = get_market_strategy_blueprint("tw")
+
+        self.assertEqual(blueprint.region, "tw")
+        self.assertIn("台湾市场三段式复盘策略", blueprint.title)
+
+    def test_tw_blueprint_excludes_cn_semantics(self):
+        block = get_market_strategy_blueprint("tw").to_prompt_block()
+
+        self.assertNotIn("北向资金", block)
+        self.assertNotIn("龙虎榜", block)
+        self.assertNotIn("涨跌停", block)
+        self.assertIn("三大法人", block)
+
+
+class TestTaiwanMarketAnalyzer(unittest.TestCase):
+    """台股 MarketAnalyzer 区域识别（M2 功能4，防第 150 行静默回退）。"""
+
+    def test_tw_region_not_silently_falls_back_to_cn(self):
+        analyzer = MarketAnalyzer(region="tw")
+
+        self.assertEqual(analyzer.region, "tw")
+        self.assertEqual(analyzer.profile.region, "tw")
+        self.assertEqual(analyzer.profile.mood_index_code, "TWII")
+
+    def test_tw_market_scope_name(self):
+        analyzer = MarketAnalyzer(region="tw")
+
+        self.assertEqual(analyzer._get_market_scope_name("zh"), "台湾市场")
+        self.assertEqual(analyzer._get_market_scope_name("en"), "Taiwan market")
+
+    def test_tw_turnover_unit_label_and_format(self):
+        analyzer = MarketAnalyzer(region="tw")
+
+        self.assertEqual(analyzer._get_turnover_unit_label(), "十亿新台币")
+        self.assertEqual(analyzer._format_turnover_value(1e9), "1.00")
+
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="en")):
+            analyzer_en = MarketAnalyzer(region="tw")
+        self.assertEqual(analyzer_en._get_turnover_unit_label(), "TWD bn")
+
+    def test_tw_review_title_en(self):
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="en")):
+            analyzer = MarketAnalyzer(region="tw")
+
+        self.assertEqual(analyzer._get_review_title("2026-03-06"), "## 2026-03-06 Taiwan Market Recap")
+
+    def test_tw_index_hint_en(self):
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="en")):
+            analyzer = MarketAnalyzer(region="tw")
+
+        hint = analyzer._get_index_hint()
+        self.assertIn("TWII", hint)
+        self.assertIn("TWOII", hint)
+
+    def test_tw_strategy_blocks_localized_en(self):
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="en")):
+            analyzer = MarketAnalyzer(region="tw")
+
+        prompt_block = analyzer._get_strategy_prompt_block()
+        markdown_block = analyzer._get_strategy_markdown_block("en")
+
+        self.assertIn("Taiwan Market Regime Strategy", prompt_block)
+        self.assertNotIn("台湾市场三段式复盘策略", prompt_block)
+        self.assertIn("### 6. Strategy Framework", markdown_block)
+        self.assertNotIn("### 六、策略框架", markdown_block)
+
+    def test_tw_prompt_uses_region_aware_zh_shell(self):
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="zh")):
+            analyzer = MarketAnalyzer(region="tw")
+
+        prompt = analyzer._build_review_prompt(MarketOverview(date="2026-02-24"), [])
+
+        self.assertIn("专业的台湾市场分析师", prompt)
+        self.assertIn("## 2026-02-24 台湾市场大盘复盘", prompt)
+        self.assertIn("台湾市场三段式复盘策略", prompt)
+
+    def test_tw_prompt_uses_region_aware_english_shell(self):
+        with patch("src.market_analyzer.get_config", return_value=SimpleNamespace(report_language="en")):
+            analyzer = MarketAnalyzer(region="tw")
+
+        prompt = analyzer._build_review_prompt(MarketOverview(date="2026-02-24"), [])
+
+        self.assertIn("professional Taiwan market analyst", prompt)
+        self.assertIn("## Data Limits", prompt)
+        self.assertIn("### 3. News Catalysts", prompt)
+        self.assertNotIn("### 3. Fund Flows", prompt)
+        self.assertNotIn("### 4. Sector Highlights", prompt)
+
+    def test_tw_search_market_news_uses_taiwan_context_name(self):
+        search_service = MagicMock()
+        search_service.search_stock_news.return_value = None
+
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.search_service = search_service
+        analyzer.profile = get_profile("tw")
+        analyzer.region = "tw"
+        analyzer.config = SimpleNamespace(report_language="zh")
+
+        analyzer.search_market_news()
+
+        self.assertEqual(
+            search_service.search_stock_news.call_count,
+            len(analyzer.profile.news_queries),
+        )
+        self.assertTrue(
+            all(
+                call.kwargs["stock_name"] == "台湾股市"
+                for call in search_service.search_stock_news.call_args_list
+            )
+        )
 
 
 if __name__ == "__main__":
