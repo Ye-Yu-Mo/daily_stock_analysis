@@ -286,6 +286,33 @@ class MarketLightServiceTestCase(unittest.TestCase):
 
         self.assertGreater(up, down)
 
+    def test_build_market_light_snapshot_tw_full_when_breadth_available(self) -> None:
+        from types import SimpleNamespace
+
+        from src.core.market_profile import get_profile
+        from src.market_analyzer import MarketAnalyzer
+
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+        analyzer.profile = get_profile("tw")
+        analyzer.config = SimpleNamespace(report_language="zh")
+
+        overview = MarketOverview(
+            date="2026-03-07",
+            indices=[MarketIndex(code="TWII", name="TAIEX", current=23000, change_pct=1.5)],
+            up_count=600,
+            down_count=300,
+            limit_up_count=30,
+            limit_down_count=10,
+        )
+
+        snapshot = analyzer.build_market_light_snapshot(overview)
+
+        self.assertEqual(snapshot["data_quality"], "ok")
+        self.assertTrue(snapshot["dimensions"]["breadth"]["available"])
+        self.assertTrue(snapshot["dimensions"]["index"]["available"])
+        self.assertTrue(snapshot["dimensions"]["limit"]["available"])
+
 
 if __name__ == "__main__":
     unittest.main()

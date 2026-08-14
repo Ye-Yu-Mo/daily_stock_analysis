@@ -209,6 +209,22 @@ class MarketAnalyzer:
             return f"{amount_raw / 1e8:.0f}"
         return f"{amount_raw:.0f}"
 
+    def _turnover_amount_str(self, total_amount: float) -> str:
+        """Format the market ``total_amount`` in the current region's unit.
+
+        CN stores ``total_amount`` pre-divided to 亿元; offshore (tw) stores the
+        raw TWD amount, so tw divides by 1e9 to yield 「十亿新台币」. This is
+        DISTINCT from :meth:`_format_turnover_value`, which formats per-index raw
+        amount and must never be fed a CN 亿元 value.
+        """
+        if self.region == "tw":
+            return f"{total_amount / 1e9:.2f}"
+        return f"{total_amount:.0f}"
+
+    def _turnover_label(self) -> str:
+        """Return the zh turnover row label (台股成交额 vs 两市成交额)."""
+        return "台股成交额" if self.region == "tw" else "两市成交额"
+
     def _get_index_change_arrow(self, change_pct: float) -> str:
         if change_pct == 0:
             return "⚪"
@@ -536,7 +552,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         try:
             logger.info("[大盘] %s action=get_market_stats status=start", self._log_context())
 
-            stats = self.data_manager.get_market_stats(purpose=f"market_review:{self.region}")
+            stats = self.data_manager.get_market_stats(purpose=f"market_review:{self.region}", market=self.region)
 
             if stats:
                 overview.up_count = stats.get('up_count', 0)
@@ -568,7 +584,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         try:
             logger.info("[大盘] %s action=get_sector_rankings status=start", self._log_context())
 
-            top_sectors, bottom_sectors = self.data_manager.get_sector_rankings(5)
+            top_sectors, bottom_sectors = self.data_manager.get_sector_rankings(5, market=self.region)
 
             if top_sectors or bottom_sectors:
                 overview.top_sectors = top_sectors
@@ -1023,7 +1039,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                     f"- **Breadth**: Advancers {overview.up_count} / Decliners {overview.down_count} / "
                     f"Flat {overview.flat_count}; "
                     f"Limit-up {overview.limit_up_count} / Limit-down {overview.limit_down_count}; "
-                    f"Turnover {overview.total_amount:.0f} ({self._get_turnover_unit_label()})"
+                    f"Turnover {self._turnover_amount_str(overview.total_amount)} ({self._get_turnover_unit_label()})"
                 )
             return "\n".join(lines)
         lines = []
@@ -1049,7 +1065,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                     "|------|------|------|",
                     f"| 上涨/下跌/平盘 | {overview.up_count} / {overview.down_count} / {overview.flat_count} | 上涨占比(不含平盘) {up_ratio:.1%} |",
                     f"| 涨停/跌停 | {overview.limit_up_count} / {overview.limit_down_count} | 涨跌停差 {limit_spread:+d} |",
-                    f"| 两市成交额 | {overview.total_amount:.0f} 亿 | {self._describe_turnover(overview.total_amount)} |",
+                    f"| {self._turnover_label()} | {self._turnover_amount_str(overview.total_amount)} {self._get_turnover_unit_label()} | {self._describe_turnover(overview.total_amount)} |",
                 ]
             )
         return "\n".join(lines)
@@ -1123,7 +1139,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         if overview.limit_up_count or overview.limit_down_count:
             reasons.append(f"涨跌停差 {overview.limit_up_count - overview.limit_down_count:+d}")
         if not reasons and overview.total_amount:
-            reasons.append(f"成交额 {overview.total_amount:.0f} 亿，{self._describe_turnover(overview.total_amount)}")
+            reasons.append(f"成交额 {self._turnover_amount_str(overview.total_amount)} {self._get_turnover_unit_label()}，{self._describe_turnover(overview.total_amount)}")
         if not reasons:
             reasons.append("结构化涨跌数据有限，按可用行情综合判断")
         return reasons[:4]
@@ -1146,7 +1162,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         if overview.limit_up_count or overview.limit_down_count:
             reasons.append(f"limit-up/down spread {overview.limit_up_count - overview.limit_down_count:+d}")
         if not reasons and overview.total_amount:
-            reasons.append(f"turnover {overview.total_amount:.0f} ({self._get_turnover_unit_label()})")
+            reasons.append(f"turnover {self._turnover_amount_str(overview.total_amount)} ({self._get_turnover_unit_label()})")
         if not reasons:
             reasons.append("limited structured breadth data; using available market inputs")
         return reasons[:4]
@@ -1299,13 +1315,18 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
     def _escape_markdown_link_label(value: str) -> str:
         return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
-    @staticmethod
-    def _describe_turnover(total_amount: float) -> str:
-        if total_amount >= 15000:
+    def _describe_turnover(self, total_amount: float) -> str:
+        """Describe turnover activity level, comparing in the region's unit.
+
+        CN stores ``total_amount`` in 亿元; tw stores raw TWD 元, so normalize tw
+        to 亿元 (÷1e8) before comparing against the 15000/9000 亿元 thresholds.
+        """
+        normalized = total_amount / 1e8 if self.region == "tw" else total_amount
+        if normalized >= 15000:
             return "高活跃度"
-        if total_amount >= 9000:
+        if normalized >= 9000:
             return "中等活跃"
-        if total_amount > 0:
+        if normalized > 0:
             return "缩量观望"
         return "暂无数据"
 
@@ -1496,7 +1517,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                 stats_block = f"""## Market Breadth
 - Advancers: {overview.up_count} | Decliners: {overview.down_count} | Flat: {overview.flat_count}
 - Limit-up: {overview.limit_up_count} | Limit-down: {overview.limit_down_count}
-- Turnover: {overview.total_amount:.0f} ({self._get_turnover_unit_label()})"""
+- Turnover: {self._turnover_amount_str(overview.total_amount)} ({self._get_turnover_unit_label()})"""
 
             if self.profile.has_sector_rankings:
                 sector_block = f"""## Sector / Theme Performance
@@ -1519,7 +1540,7 @@ Concept lagging: {bottom_concepts_text if bottom_concepts_text else "N/A"}"""
                 stats_block = f"""## 市场概况
 - 上涨: {overview.up_count} 家 | 下跌: {overview.down_count} 家 | 平盘: {overview.flat_count} 家
 - 涨停: {overview.limit_up_count} 家 | 跌停: {overview.limit_down_count} 家
-- 两市成交额: {overview.total_amount:.0f} 亿元"""
+- {self._turnover_label()}: {self._turnover_amount_str(overview.total_amount)} {self._get_turnover_unit_label()}"""
 
             if self.profile.has_sector_rankings:
                 sector_block = f"""## 板块表现

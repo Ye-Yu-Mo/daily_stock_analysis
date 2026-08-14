@@ -101,8 +101,8 @@ TW_PROFILE = MarketProfile(
         "台股 加权指数 柜买指数 行情",
     ],
     prompt_index_hint="分析台湾加权指数、柜买指数等主要指数走势特点",
-    has_market_stats=False,
-    has_sector_rankings=False,
+    has_market_stats=True,
+    has_sector_rankings=True,
 )
 
 

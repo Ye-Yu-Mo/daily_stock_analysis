@@ -93,7 +93,7 @@ PY
 
 当前阶段支持手动输入台湾股票的 Yahoo Finance 后缀代码，进入既有个股分析、历史保存、报告渲染、DecisionSignal、Portfolio 和 Intelligence 链路。TWSE 上市股票使用 `.TW` 后缀，TPEx 上柜（柜买）股票使用 `.TWO` 后缀，二者折叠为同一 `tw` 市场标签。
 
-近期台股链路已从早期 MVP 收敛为一等个股分析市场：市场识别、数据路由、交易日历/市场阶段、YFinance 日线与基础行情、主要指数、服务层/API/Web 市场枚举、TWD 币种标注、三大法人报告区块与 LLM prompt 消费均已接入。台股大盘复盘已支持：`MARKET_REVIEW_REGION` 新增 `tw`，`both` 展开为 `cn,hk,us,jp,kr,tw`，通过 `^TWII`（加权指数）/`^TWOII`（柜买指数）输出复盘，复用 fail-open 机制。Market Light 大盘红绿灯快照与告警也已支持 `tw`，但为**指数级口径**（无市场宽度/涨跌停，`data_quality=partial`）。仍需保留的边界是：台股股票池种子/自动补全和完整台股市场宽度/板块排行尚未纳入。
+近期台股链路已从早期 MVP 收敛为一等个股分析市场：市场识别、数据路由、交易日历/市场阶段、YFinance 日线与基础行情、主要指数、服务层/API/Web 市场枚举、TWD 币种标注、三大法人报告区块与 LLM prompt 消费均已接入。台股大盘复盘已支持：`MARKET_REVIEW_REGION` 新增 `tw`，`both` 展开为 `cn,hk,us,jp,kr,tw`，通过 `^TWII`（加权指数）/`^TWOII`（柜买指数）输出复盘，复用 fail-open 机制。台股市场宽度（涨跌家数/涨跌停 ±10%/成交额 TWD）与产业板块排行也已支持（TWSE/TPEx 开放资料），Market Light 大盘红绿灯从指数级升级为全维度。仍需保留的边界是：台股股票池种子/自动补全尚未完整纳入。
 
 支持格式：
 
@@ -116,8 +116,8 @@ PY
 不承诺项：
 
 - 不承诺实时行情；Yahoo Finance 数据可能延迟或字段缺失。
-- 不承诺完整基本面、行业/板块、市场宽度或涨跌家数；台股大盘复盘仅提供主要指数与新闻线索，不提供台股市场宽度或板块排行。`MARKET_REVIEW_REGION` 现接受 `cn/hk/us/jp/kr/tw/both` 或这些市场的逗号子集。
-- 台股股票索引/种子和 Web 自动补全仍未完整接入；Market Light 快照与告警现支持 `cn/hk/us/tw`（`jp`/`kr` 告警仍不支持），但台股为指数级口径，不提供市场宽度或涨跌停。
+- 不承诺完整基本面；台股大盘复盘现提供市场宽度（涨跌家数/涨跌停 ±10%）与产业板块排行（TWSE/TPEx 开放资料）。`MARKET_REVIEW_REGION` 现接受 `cn/hk/us/jp/kr/tw/both` 或这些市场的逗号子集。
+- 台股股票索引/种子和 Web 自动补全仍未完整接入；Market Light 快照与告警支持 `cn/hk/us/tw`（`jp`/`kr` 告警仍不支持），台股为全维度口径（涨跌家数/涨跌停 ±10%/成交额 TWD）。
 - 不补齐 Portfolio 的 TWD 汇率、成本、市值完整口径；台股 Portfolio 当前属于 partial valuation 市场。
 
 回滚方式：移除 `tw` 市场识别、交易日历注册、YFinance 路由扩展、三大法人资料层/报告消费、TWD 标注、服务层/API 市场枚举及前端市场类型放行，并删除本文档中的能力声明。

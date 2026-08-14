@@ -195,7 +195,8 @@ class TestMarketAnalyzerStrategyPrompt(unittest.TestCase):
         analyzer._get_market_statistics(overview)
 
         analyzer.data_manager.get_market_stats.assert_called_once_with(
-            purpose="market_review:hk"
+            purpose="market_review:hk",
+            market="hk",
         )
         self.assertEqual(overview.up_count, 3)
 
@@ -203,13 +204,13 @@ class TestMarketAnalyzerStrategyPrompt(unittest.TestCase):
 class TestTaiwanProfileAndBlueprint(unittest.TestCase):
     """台股复盘元数据：TW_PROFILE 与 TW_BLUEPRINT。"""
 
-    def test_tw_profile_uses_twii_index_and_no_market_stats(self):
+    def test_tw_profile_uses_twii_index_with_market_stats(self):
         profile = get_profile("tw")
 
         self.assertEqual(profile.region, "tw")
         self.assertEqual(profile.mood_index_code, "TWII")
-        self.assertFalse(profile.has_market_stats)
-        self.assertFalse(profile.has_sector_rankings)
+        self.assertTrue(profile.has_market_stats)
+        self.assertTrue(profile.has_sector_rankings)
 
     def test_tw_blueprint_region_and_title(self):
         blueprint = get_market_strategy_blueprint("tw")
@@ -295,10 +296,10 @@ class TestTaiwanMarketAnalyzer(unittest.TestCase):
         prompt = analyzer._build_review_prompt(MarketOverview(date="2026-02-24"), [])
 
         self.assertIn("professional Taiwan market analyst", prompt)
-        self.assertIn("## Data Limits", prompt)
-        self.assertIn("### 3. News Catalysts", prompt)
-        self.assertNotIn("### 3. Fund Flows", prompt)
-        self.assertNotIn("### 4. Sector Highlights", prompt)
+        self.assertIn("## Market Breadth", prompt)
+        self.assertIn("### 3. Fund Flows", prompt)
+        self.assertIn("### 4. Sector Highlights", prompt)
+        self.assertNotIn("### 3. News Catalysts", prompt)
 
     def test_tw_search_market_news_uses_taiwan_context_name(self):
         search_service = MagicMock()
@@ -322,6 +323,38 @@ class TestTaiwanMarketAnalyzer(unittest.TestCase):
                 for call in search_service.search_stock_news.call_args_list
             )
         )
+
+    def test_tw_stats_block_uses_twd_billion_unit(self):
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+        analyzer.profile = get_profile("tw")
+        analyzer.config = SimpleNamespace(report_language="zh")
+
+        overview = MarketOverview(
+            date="2026-03-07",
+            up_count=600,
+            down_count=300,
+            flat_count=10,
+            limit_up_count=30,
+            limit_down_count=10,
+            total_amount=6_620_000_000.0,  # 原始 TWD（元）
+        )
+
+        block = analyzer._build_stats_block(overview)
+
+        self.assertIn("台股成交额", block)
+        self.assertIn("十亿新台币", block)
+        self.assertNotIn("两市成交额", block)
+        self.assertNotIn("6620000000", block)  # 不应出现未换算的原始元
+        self.assertIn("6.62", block)  # 6.62 十亿新台币
+
+    def test_tw_describe_turnover_normalizes_yuan_to_yi(self):
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+
+        # 6.62B 原始元 = 66.2 亿元 → 远低于 9000 亿阈值，不应判「高活跃度」
+        self.assertEqual(analyzer._describe_turnover(6_620_000_000.0), "缩量观望")
+        self.assertEqual(analyzer._describe_turnover(500_000_000.0), "缩量观望")
 
 
 if __name__ == "__main__":

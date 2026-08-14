@@ -101,6 +101,35 @@ class MarketReviewLocalizationTestCase(unittest.TestCase):
             "[dsa-market-region]: # (tw)\n\n",
         )
 
+    def test_tw_market_review_stats_uses_twd_unit(self) -> None:
+        from types import SimpleNamespace
+
+        from src.core.market_profile import get_profile
+        from src.market_analyzer import MarketAnalyzer, MarketOverview
+
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+        analyzer.profile = get_profile("tw")
+        analyzer.config = SimpleNamespace(report_language="zh")
+        analyzer.data_manager = MagicMock()
+        analyzer.data_manager.get_market_stats.return_value = {
+            "up_count": 600, "down_count": 300, "flat_count": 10,
+            "limit_up_count": 30, "limit_down_count": 10,
+            "total_amount": 6_620_000_000.0,
+        }
+
+        overview = MarketOverview(date="2026-03-07")
+        analyzer._get_market_statistics(overview)
+
+        self.assertEqual(overview.up_count, 600)
+        analyzer.data_manager.get_market_stats.assert_called_once_with(
+            purpose="market_review:tw", market="tw"
+        )
+
+        block = analyzer._build_stats_block(overview)
+        self.assertIn("台股成交额", block)
+        self.assertIn("十亿新台币", block)
+
     def test_run_market_review_uses_english_notification_title(self) -> None:
         notifier = self._make_notifier()
         market_analyzer = MagicMock()
