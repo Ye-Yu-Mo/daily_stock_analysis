@@ -203,6 +203,23 @@ class TestTpexBreadthParsing(unittest.TestCase):
         self.assertEqual(stats["down_count"], 1)
         self.assertEqual(stats["flat_count"], 1)
 
+    def test_single_market_partial_data_quality(self):
+        # TWSE 有数据、TPEx 空 → data_quality=partial（只覆盖单一交易所）
+        with patch(
+            "data_provider.tw_market_breadth_fetcher.requests.get",
+            side_effect=[_resp(TWSE_MI_INDEX_FIXTURE), _resp([])],
+        ):
+            stats = _fetcher().get_market_stats()
+        self.assertEqual(stats["data_quality"], "partial")
+
+    def test_both_markets_ok_data_quality(self):
+        with patch(
+            "data_provider.tw_market_breadth_fetcher.requests.get",
+            side_effect=[_resp(TWSE_MI_INDEX_FIXTURE), _resp(TPEX_FIXTURE)],
+        ):
+            stats = _fetcher().get_market_stats()
+        self.assertEqual(stats["data_quality"], "ok")
+
 
 class TestSectorRankings(unittest.TestCase):
     def test_sector_rankings_top_bottom(self):

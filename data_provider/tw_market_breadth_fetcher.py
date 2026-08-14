@@ -194,6 +194,8 @@ class TwMarketBreadthFetcher:
             return None
 
         stats = _compute_breadth(records)
+        # 源级完整性：TWSE/TPEx 任一交易所无数据时，宽度只覆盖单一交易所。
+        stats["data_quality"] = "ok" if twse and tpex else "partial"
         with self._lock:
             self._cache[key] = stats
             self._cache_at[key] = time.time()

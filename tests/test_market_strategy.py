@@ -356,6 +356,19 @@ class TestTaiwanMarketAnalyzer(unittest.TestCase):
         self.assertEqual(analyzer._describe_turnover(6_620_000_000.0), "缩量观望")
         self.assertEqual(analyzer._describe_turnover(500_000_000.0), "缩量观望")
 
+    def test_tw_concept_rankings_skipped(self):
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+        analyzer.profile = get_profile("tw")
+        analyzer.config = SimpleNamespace(report_language="zh")
+        analyzer.data_manager = MagicMock()
+
+        overview = MarketOverview(date="2026-03-07")
+        analyzer._get_concept_rankings(overview)
+
+        # 台股无概念/题材数据源，不得调用 A 股概念链
+        analyzer.data_manager.get_concept_rankings.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

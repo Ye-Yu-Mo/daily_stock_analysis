@@ -96,6 +96,8 @@ class MarketOverview:
     limit_up_count: int = 0             # 涨停家数
     limit_down_count: int = 0           # 跌停家数
     total_amount: float = 0.0           # 两市成交额（亿元）
+    # 台股宽度源级完整性：ok（TWSE+TPEx 齐全）/ partial（单一交易所）
+    market_stats_data_quality: str = "ok"
     # north_flow: float = 0.0           # 北向资金净流入（亿元）- 已废弃，接口不可用
     
     # 板块涨幅榜
@@ -561,6 +563,7 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                 overview.limit_up_count = stats.get('limit_up_count', 0)
                 overview.limit_down_count = stats.get('limit_down_count', 0)
                 overview.total_amount = stats.get('total_amount', 0.0)
+                overview.market_stats_data_quality = stats.get('data_quality', 'ok')
 
                 logger.info(
                     "[大盘] %s action=get_market_stats status=success up=%s down=%s flat=%s "
@@ -603,7 +606,13 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
             logger.error("[大盘] %s action=get_sector_rankings status=failed error=%s", self._log_context(), e)
 
     def _get_concept_rankings(self, overview: MarketOverview):
-        """获取概念/题材涨跌榜（fail-open）。"""
+        """获取概念/题材涨跌榜（fail-open，仅 A 股有概念/题材数据）。
+
+        台股/港股/美股等 offshore 市场没有「概念/题材」数据源，直接跳过，
+        避免把 A 股概念板块混入台股复盘。
+        """
+        if self.region != "cn":
+            return
         try:
             logger.info("[大盘] %s action=get_concept_rankings status=start", self._log_context())
 
@@ -1363,6 +1372,9 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         elif all(dimension["available"] for dimension in dimensions.values()):
             data_quality = "ok"
         else:
+            data_quality = "partial"
+        # 台股宽度源级降级：宽度只覆盖单一交易所时不能标 ok。
+        if data_quality == "ok" and getattr(overview, "market_stats_data_quality", "ok") == "partial":
             data_quality = "partial"
 
         score = int(round(breadth_score * 0.45 + index_score * 0.35 + limit_score * 0.20))
