@@ -227,6 +227,19 @@ class MarketAnalyzer:
         """Return the zh turnover row label (台股成交额 vs 两市成交额)."""
         return "台股成交额" if self.region == "tw" else "两市成交额"
 
+    def _breadth_partial_warning(self, overview: MarketOverview) -> str:
+        """Localized warning when breadth covers only one Taiwan exchange.
+
+        TW breadth fetcher marks ``data_quality="partial"`` when only TWSE or
+        TPEx produced data; surface that boundary in the rendered report so
+        half-market counts are never presented as full-market breadth.
+        """
+        if getattr(overview, "market_stats_data_quality", "ok") != "partial":
+            return ""
+        if self._get_review_language() == "en":
+            return "Breadth data is partial (single exchange only); counts may not represent the full Taiwan market."
+        return "宽度数据不完整（仅覆盖单一交易所），以上涨跌家数/涨跌停/成交额可能不代表全市场。"
+
     def _get_index_change_arrow(self, change_pct: float) -> str:
         if change_pct == 0:
             return "⚪"
@@ -1050,6 +1063,11 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                     f"Limit-up {overview.limit_up_count} / Limit-down {overview.limit_down_count}; "
                     f"Turnover {self._turnover_amount_str(overview.total_amount)} ({self._get_turnover_unit_label()})"
                 )
+            partial_warning = self._breadth_partial_warning(overview)
+            if partial_warning:
+                if lines:
+                    lines.append("")
+                lines.append(f"- ⚠️ {partial_warning}")
             return "\n".join(lines)
         lines = []
         score = light["score"] if isinstance(light, dict) else None
@@ -1077,6 +1095,11 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                     f"| {self._turnover_label()} | {self._turnover_amount_str(overview.total_amount)} {self._get_turnover_unit_label()} | {self._describe_turnover(overview.total_amount)} |",
                 ]
             )
+        partial_warning = self._breadth_partial_warning(overview)
+        if partial_warning:
+            if lines:
+                lines.append("")
+            lines.append(f"- ⚠️ {partial_warning}")
         return "\n".join(lines)
 
     def build_market_light_snapshot(self, overview: MarketOverview) -> Dict[str, Any]:
@@ -1530,6 +1553,9 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
 - Advancers: {overview.up_count} | Decliners: {overview.down_count} | Flat: {overview.flat_count}
 - Limit-up: {overview.limit_up_count} | Limit-down: {overview.limit_down_count}
 - Turnover: {self._turnover_amount_str(overview.total_amount)} ({self._get_turnover_unit_label()})"""
+                partial_warning = self._breadth_partial_warning(overview)
+                if partial_warning:
+                    stats_block += f"\n- ⚠️ {partial_warning}"
 
             if self.profile.has_sector_rankings:
                 sector_block = f"""## Sector / Theme Performance
@@ -1553,6 +1579,9 @@ Concept lagging: {bottom_concepts_text if bottom_concepts_text else "N/A"}"""
 - 上涨: {overview.up_count} 家 | 下跌: {overview.down_count} 家 | 平盘: {overview.flat_count} 家
 - 涨停: {overview.limit_up_count} 家 | 跌停: {overview.limit_down_count} 家
 - {self._turnover_label()}: {self._turnover_amount_str(overview.total_amount)} {self._get_turnover_unit_label()}"""
+                partial_warning = self._breadth_partial_warning(overview)
+                if partial_warning:
+                    stats_block += f"\n- ⚠️ {partial_warning}"
 
             if self.profile.has_sector_rankings:
                 sector_block = f"""## 板块表现

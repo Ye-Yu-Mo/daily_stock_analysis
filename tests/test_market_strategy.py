@@ -348,6 +348,30 @@ class TestTaiwanMarketAnalyzer(unittest.TestCase):
         self.assertNotIn("6620000000", block)  # 不应出现未换算的原始元
         self.assertIn("6.62", block)  # 6.62 十亿新台币
 
+    def test_tw_stats_block_and_prompt_warn_when_breadth_partial(self):
+        analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
+        analyzer.region = "tw"
+        analyzer.profile = get_profile("tw")
+        analyzer.strategy = get_market_strategy_blueprint("tw")
+        analyzer.config = SimpleNamespace(report_language="zh")
+
+        overview = MarketOverview(
+            date="2026-03-07",
+            up_count=600,
+            down_count=300,
+            flat_count=10,
+            limit_up_count=30,
+            limit_down_count=10,
+            total_amount=6_620_000_000.0,
+            market_stats_data_quality="partial",  # 单一交易所失败 -> 宽度不完整
+        )
+
+        block = analyzer._build_stats_block(overview)
+        self.assertIn("宽度数据不完整", block)
+
+        prompt = analyzer._build_review_prompt(overview, [])
+        self.assertIn("宽度数据不完整", prompt)
+
     def test_tw_describe_turnover_normalizes_yuan_to_yi(self):
         analyzer = MarketAnalyzer.__new__(MarketAnalyzer)
         analyzer.region = "tw"
